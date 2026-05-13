@@ -2,15 +2,25 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from utils import *
-from formulas import *
-from dataloaders import *
-from model import build_model
 
+from src.utils import *
+from src.formulas import *
+from src.dataloaders import *
+from src.model import build_model
+
+KNOWN_GENES = {
+    1252: "Gata1", 
+    1670: "Klf1",  # Erythroid
+    1913: "Mpo", 
+    1040: "Elane", # Myeloid
+    664:  "Cebpa", 
+    619:  "Cd34",  # Progenitor
+    1253: "Gata2"
+}
 
 def plot_parameters(ax, model, checkpoint, gene_to_plot):
     """
-    Plots a textbox with the hyperparamters of the model.
+    Plots a textbox with the hyperparameters and global/local metrics of the model.
     """
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     model_type = checkpoint["model"]
@@ -18,35 +28,44 @@ def plot_parameters(ax, model, checkpoint, gene_to_plot):
     lr = checkpoint["lr"]
     wd = checkpoint["wd"]
     gene = checkpoint["gene"]
-    mse = checkpoint["mse"]
-    aic = checkpoint["aic"]
-    bic =  checkpoint["bic"]
-    model_gene = checkpoint["gene"]
     
-    gene_idx = 0 if mse.shape[0] == 1 else gene_to_plot
+    # Metrics
+    mse = checkpoint["mse"]          # Shape: (n_genes, n_lineages)
+    aic = checkpoint["aic"]          # Shape: (n_genes,)
+    bic = checkpoint["bic"]          # Shape: (n_genes,)
+    zinb_loss = checkpoint.get("zinb_loss", 0.0)
+    global_aic = checkpoint.get("global_aic", 0.0)
+    global_bic = checkpoint.get("global_bic", 0.0)
+    
+    total_avg_mse = mse.mean().item()
 
-    mse_list = [f"L{l+1}: {mse[gene_idx, l].item():.3f}" for l in range(mse.shape[1])]
-    mse_val = " | ".join(mse_list)
+    gene_idx = 0 if mse.shape[0] == 1 else gene_to_plot
+    
+    mse_lineages = [f"L{l+1}: {mse[gene_idx, l].item():.3f}" for l in range(mse.shape[1])]
+    mse_str = " | ".join(mse_lineages)
+    
     aic_val = aic[gene_idx].item()
     bic_val = bic[gene_idx].item()
 
+    # Construct the text box
     text = (
-        f"Model: {model_type}\n"
-        f"Hidden layers: {hidden_layers}\n"
-        f"Parameters: {total_params}\n"
-        f"LR: {lr} | WD: {wd}\n"
-        f"MSE: {mse_val}\n"
+        f"Model: {model_type.upper()}\n"
+        f"Layers: {hidden_layers}\n"
+        f"Params: {total_params:,}\n"
+        f"-------------------\n"
+        f"ZINB Loss: {zinb_loss:.4f}\n"
+        f"Avg MSE: {total_avg_mse:.4f}\n"
+        f"Global AIC: {global_aic:,.0f}\n"
+        f"Global BIC: {global_bic:,.0f}\n"
+        f"-------------------\n"
+        f"MSE: {mse_str}\n"
         f"AIC: {aic_val:.0f} | BIC: {bic_val:.0f}"
     )
 
-    if gene is None:
-        text = f"{text}\nAll Genes"
-    else:
-        text = f"{text}\nSingle Gene"
-
     text_box = ax.text(1.02, 0.5, text, transform=ax.transAxes, 
-            fontsize=9, verticalalignment='center', horizontalalignment='left',
-            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            fontsize=8.5, verticalalignment='center', horizontalalignment='left',
+            linespacing=1.4,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='gray'))
 
     return text_box
 
@@ -71,24 +90,32 @@ def plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors
         x_raw, _, y_raw = predictions_raw[l]
         x_smooth, y_smooth = smoothen_lineage_trajectory(x_raw, y_raw)
 
-        ax.plot(x_raw, y_raw, linewidth=2, color=colors[l], label=f"Lineage {l+1}", alpha=0.5)
-        ax.plot(x_smooth, y_smooth, linewidth=3, color=colors[l], label=f"Lineage {l+1}", alpha=1)
+        #ax.plot(x_raw, y_raw, linewidth=1, color=colors[l], label=f"Raw Predictions - Lineage {l+1}", alpha=0.4)
+        ax.plot(x_smooth, y_smooth, linewidth=3, color=colors[l], label=f"Smoothed - Lineage {l+1}", alpha=0.6)
         
 
 def plot_custom(ax, pseudotime, checkpoint, colors):
     """
-    Plots the curve of a custom formula.
+    Plots the curve of a custom formula using a clean linspace.
     """
     pt_min = checkpoint["pt_min"]
     pt_max = checkpoint["pt_max"]
 
     n_lineages = pseudotime.shape[1]
     for l in range(n_lineages):
-        pt_input_scaled = scale_pt(pseudotime, pt_min, pt_max)
-        y_formula_raw = sigmoid_sim1_gene12(pt_input_scaled[:, l], lineage=l)
-        y_formula = np.log1p(np.exp(y_formula_raw))                       
-        ax.plot(pseudotime, y_formula, linewidth=3, color=colors[l], linestyle="--", label=f"Lineage {l+1} (Symbolic)", alpha=0.7)
+        # Create sorted X-axis from 0 to the max pseudotime of this lineage
+        max_pt_for_lineage = np.max(pseudotime[:, l])
+        x_clean = np.linspace(0, max_pt_for_lineage, 300)
+        
+        # Scale the x axis
+        pt_input_scaled = scale_pt(x_clean, pt_min, pt_max)
+        y_formula_raw = pykan_paul_gene1670(pt_input_scaled, lineage=l)
+        
+        # Transform back to log1p space and flatten to 1D
+        y_formula = np.log1p(np.exp(y_formula_raw)).flatten()
 
+        
+        ax.plot(x_clean, y_formula, linewidth=4, color=colors[l], linestyle="--", label=f"Lineage {l+1} (Symbolic)", zorder=4)
 
 def plot_scatter_data(ax, adata, pseudotime, weights, gene_to_plot, colors):
     """
@@ -115,6 +142,9 @@ def plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot,
 
     n_lineages = weights.shape[1]    
     colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
+    # colors = ['#084594', '#d95f02']
+    # colors = ['#000000', '#000000']
+
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -123,14 +153,20 @@ def plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot,
     plot_scatter_data(ax, adata, pseudotime, weights, gene_to_plot, colors)
     
     plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors)
+    plot_custom(ax, pseudotime, checkpoint, colors)
     
     ax.set_title(f"Gene: {gene_to_plot}")
+
+    gene_name = KNOWN_GENES.get(gene_to_plot, f"Gene {gene_to_plot}")
+    ax.set_title(f"{gene_name} Expression Trajectory", fontsize=16, fontweight='bold')
+
     ax.set_xlabel("Pseudotime")
     ax.set_ylabel("Log(expression + 1)")
     ax.legend(title="Lineage")
 
     fig.subplots_adjust(left=0.05, bottom=0.08, top=0.92, right=0.8)
 
+    plt.savefig(fig_path, bbox_inches="tight", dpi=300)
     plt.savefig(fig_path, bbox_inches="tight", bbox_extra_artists=(text_box,), dpi=300)
     plt.show()
 
@@ -156,3 +192,4 @@ def run_visualization(args, adata, pseudotime, weights):
     model.load_state_dict(checkpoint["state_dict"])
 
     plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path)
+

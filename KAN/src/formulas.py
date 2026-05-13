@@ -63,3 +63,10 @@ def pysr_mlp_single_sim1_gene12(x, lineage):
         return np.exp(-3.1123 * (x**2) + 1.3772 * x + 1.284) + 2.0569   
     else:             
         return -3.163 * (x**3) + 3.7008 * (x**2) + 5.8862
+    
+
+def pykan_paul_gene1670(x, lineage):
+    if lineage == 0:
+        return 2.8 - 2.6 * sigmoid(2.3 + 32.6 * sigmoid(-1.0 * x - 0.3) - 5.2)
+    else:
+        return 2.8 - 2.6 * sigmoid(-4.6 + 32.6 * sigmoid(-1.0 * x - 0.3) - 5.2)

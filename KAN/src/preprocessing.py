@@ -1,13 +1,13 @@
 import os
 import pandas as pd
 import numpy as np
-import torch
 import scanpy as sc
 import rpy2.robjects as robjects
 from rpy2.robjects import pandas2ri, numpy2ri
 from rpy2.robjects.conversion import localconverter
 from sklearn.cluster import KMeans
-from utils import *
+
+from src.utils import *
 
 # Preprocessing & Data Loading
 
@@ -244,7 +244,7 @@ def run_trajectory(adata, dataset_name="paul", data_dir="./data"):
 # Main Wrapper
 
 def run_preprocessing(args):
-    dataset_name = args.dataset.lower()
+    dataset_name = args.dataset
     
     if dataset_name == "paul":
         adata = load_paul15(data_dir=args.data_dir)

@@ -1,4 +1,8 @@
-from preprocessing import load_paul15
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from src.preprocessing import load_paul15
 
 def main():
     adata = load_paul15()
@@ -20,9 +24,9 @@ if __name__ == "__main__":
 
 """
 Gata1    -> Index: 1252
-Klf1     -> Index: 1670 x
+Klf1     -> Index: 1670
 Mpo      -> Index: 1913
-Elane    -> Index: 1040 x
+Elane    -> Index: 1040
 Cebpa    -> Index: 664 
 Cd34     -> Index: 619 
 Gata2    -> Index: 1253

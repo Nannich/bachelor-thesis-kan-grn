@@ -2,8 +2,9 @@ import numpy as np
 import os
 import torch
 import torch.nn.functional as F
-from utils import *
-from model import build_model
+
+from src.utils import *
+from src.model import build_model
 
 def information_criteria_test(model_checkpoint, null_checkpoint, threshold=2.0):
     # Extract the pre-calculated AIC metrics

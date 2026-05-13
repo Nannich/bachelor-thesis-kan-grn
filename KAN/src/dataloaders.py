@@ -1,7 +1,8 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from utils import *
+
+from src.utils import *
 
 class SingleCellDataset(Dataset):
     def __init__(self, trajectories, counts):

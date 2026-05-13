@@ -1,18 +1,26 @@
+import time
 import torch
 import os
-from dataloaders import get_dataloaders, get_eval_dataloader
-from de import calculate_mse_per_curve, calculate_nll_per_gene, calculate_aic, calculate_bic
-from model import build_model
-from loss import ZINBLoss
+import numpy as np
+import copy
 
-from model import MLP_HIDDEN_LAYERS, PYKAN_HIDDEN_LAYERS, EFFKAN_HIDDEN_LAYERS
+from src.dataloaders import get_dataloaders, get_eval_dataloader
+from src.analysis.de import calculate_mse_per_curve, calculate_nll_per_gene, calculate_aic, calculate_bic
+from src.model import build_model, MLP_HIDDEN_LAYERS, PYKAN_HIDDEN_LAYERS, EFFKAN_HIDDEN_LAYERS
+from src.loss import ZINBLoss, MSEWrapperLoss
 
 BATCH_SIZE = 256
 EPOCHS = 2000
-LR = 1e-3
-WEIGHT_DECAY = 1e-4
 GRADIENT_CLIP_LIMIT = 5
 PATIENCE = 12
+
+TRAIN_CONFIG = {
+    "mlp":    {"lr": 0.002, "wd": 6.5e-05},
+    #"effkan": {"lr": 0.0021, "wd": 6.5e-05},
+    "effkan": {"lr": 0.002, "wd": 6.5e-05},
+    "pykan":  {"lr": 0.0024, "wd": 3.5e-6},
+    "null":   {"lr": 0.001,  "wd": 0.0}
+}
 
 def train_loop(dataloader, model, loss_fn, optimizer, device, epoch, is_kan):
     model.train()
@@ -74,6 +82,10 @@ def run_training(args, adata, pseudotime, weights):
     target_gene = args.gene
     dataset = args.dataset
 
+    config = TRAIN_CONFIG.get(model_type)
+    lr = config["lr"]
+    wd = config["wd"]
+
     train_dataloader, test_dataloader, input_dim, output_dim, pt_min, pt_max = get_dataloaders(
         adata, pseudotime, weights, target_gene, BATCH_SIZE
     )
@@ -90,20 +102,24 @@ def run_training(args, adata, pseudotime, weights):
         "pt_max": pt_max,
         "hidden_layers": MLP_HIDDEN_LAYERS if model_type == "mlp" else (
                          EFFKAN_HIDDEN_LAYERS if model_type == "effkan" else PYKAN_HIDDEN_LAYERS),
-        "wd": WEIGHT_DECAY,
-        "lr": LR,
-        "mse": 0
+        "wd": wd,
+        "lr": lr,
+        "mse": 0,
+        "zinb_loss": float('inf')
     }
 
     gene_str = f"gene{target_gene}" if target_gene is not None else "all"
+    # filename = f"MSE_{model_type}_{dataset}_{gene_str}.pth"
     filename = f"{model_type}_{dataset}_{gene_str}.pth"
     model_path = os.path.join(model_dir, filename)
 
     device = "cpu"
     model.to(device)
     print(f"Starting training on: {device}")
+    training_start_time = time.time()
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
+    #loss_fn = MSEWrapperLoss()
     loss_fn = ZINBLoss(ridge_lambda=0.11)
 
     best_val_loss = float('inf')
@@ -123,23 +139,36 @@ def run_training(args, adata, pseudotime, weights):
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_no_improve = 0
-            checkpoint["state_dict"] = model.state_dict()
+            checkpoint["state_dict"] = copy.deepcopy(model.state_dict())
+            checkpoint["zinb_loss"] = best_val_loss
             torch.save(checkpoint, model_path)
         else:
             epochs_no_improve += 1
 
         if epochs_no_improve >= PATIENCE:
             print(f"Early stopping triggered after {t+1} epochs.")
+            checkpoint["epochs"] = t + 1
+            torch.save(checkpoint, model_path)
             break
 
+    training_end_time = time.time()
+    total_duration = training_end_time - training_start_time
+    
+    print("-" * 30)
+    print(f"TOTAL TRAINING TIME: {total_duration:.2f} seconds")
+    print(f"AVERAGE TIME PER EPOCH: {total_duration / (t+1):.2f} seconds")
+    print("-" * 30)
+
     # Add Evaluation metrics to checkpoint
-    model.load_state_dict(checkpoint["state_dict"])
+    checkpoint = torch.load(model_path, weights_only=False)
+    model.load_state_dict(checkpoint["state_dict"])    
+    
     full_dataloader = get_eval_dataloader(
         adata, pseudotime, weights, pt_min, pt_max, target_gene, batch_size=256
     )
+    
     mse_per_curve = calculate_mse_per_curve(full_dataloader, model, device)
-    checkpoint["mse"] = mse_per_curve.cpu()
-
+    
     unreduced_loss_fn = ZINBLoss(reduction='none') 
     total_nll_tensor = calculate_nll_per_gene(full_dataloader, model, unreduced_loss_fn, device)
     
@@ -151,6 +180,13 @@ def run_training(args, adata, pseudotime, weights):
     k_per_gene = n_params / n_genes
     n_samples = len(full_dataloader.dataset)
 
+    # Calculate global bic and aic
+    global_nll = total_nll_tensor.sum().item()
+    global_k = n_params
+    checkpoint["global_aic"] = 2 * global_k + 2 * global_nll
+    checkpoint["global_bic"] = global_k * np.log(n_samples) + 2 * global_nll
+
+    checkpoint["mse"] = mse_per_curve.cpu()
     checkpoint["aic"] = calculate_aic(k_per_gene, total_nll_tensor).cpu()
     checkpoint["bic"] = calculate_bic(k_per_gene, total_nll_tensor, n_samples).cpu()
     

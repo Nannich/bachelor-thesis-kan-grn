@@ -1,20 +1,13 @@
 import numpy as np
-import os
 import networkx as nx
-from sklearn.cluster import KMeans
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from kan import KAN as PyKAN
-from utils import *
-from de import *
-from model import build_model
-import pandas as pd
 
-def plot_grn(adj_matrix, gene_names, edge_threshold=0.1):
+from src.utils import *
+from src.analysis.de import *
+from src.model import build_model
+
+def plot_grn(adj_matrix, gene_names, edge_threshold=0.2):
     G = nx.DiGraph()
     n_genes = adj_matrix.shape[0]
     

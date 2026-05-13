@@ -8,23 +8,23 @@ except OSError:
 
 import os
 import argparse
-from train import run_training
-from visualize import run_visualization
-from symbolic import run_extraction
-from de import run_de
-from grn_old import run_grn
-from preprocessing import run_preprocessing
+from src.train import run_training
+from src.plotting.visualize import run_visualization
+from src.analysis.symbolic import run_extraction
+from src.analysis.de import run_de
+from src.analysis.grn import run_grn
+from src.preprocessing import run_preprocessing
 
 def main():
     parser = argparse.ArgumentParser()
     
     # Paths
     parser.add_argument("--data_dir", type=str, default="./data/")
-    parser.add_argument("--model_dir", type=str, default="./models/")
+    parser.add_argument("--model_dir", type=str, default="./checkpoints/")
     parser.add_argument("--fig_dir", type=str, default="./figures/")
 
     # Parse dataset
-    parser.add_argument("--dataset", type=str, default="paul", choices=["paul", "gsd", "gsd50", "hsc", "hsc70", "bf"])
+    parser.add_argument("--dataset", type=str, default="paul")
 
     # Parse command specific arguments
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -41,14 +41,14 @@ def main():
     parser_sym.add_argument("name", type=str)
     parser_sym.add_argument("gene", type=int)
     
-    parser_sym = subparsers.add_parser("de")
-    parser_sym.add_argument("name", type=str)
-    parser_sym.add_argument("--lineage", type=int, default=0)
+    parser_de = subparsers.add_parser("de")
+    parser_de.add_argument("name", type=str)
+    parser_de.add_argument("--lineage", type=int, default=0)
 
-    parser_sym = subparsers.add_parser("grn")
-    parser_sym.add_argument("name", type=str)
+    parser_grn = subparsers.add_parser("grn")
+    parser_grn.add_argument("name", type=str)
 
-    parser_sym = subparsers.add_parser("process")
+    parser_process = subparsers.add_parser("process")
 
 
     args = parser.parse_args()

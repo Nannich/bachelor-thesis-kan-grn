@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 class ZINBLoss(nn.Module):
     def __init__(self, scale_factor=1.0, eps=1e-10, ridge_lambda=0.0, reduction='mean'):
@@ -67,3 +68,22 @@ class ZINBLoss(nn.Module):
             return torch.sum(result)
         elif self.reduction == 'none':
             return result
+
+class MSEWrapperLoss(nn.Module):
+    """
+    A dummy wrapper that ignores theta and pi to train purely on MSE.
+    Useful for baseline comparisons.
+    """
+    def __init__(self):
+        super(MSEWrapperLoss, self).__init__()
+
+    def forward(self, y_true, mu, theta, pi):
+        # 1. Log transform the ground truth
+        y_true_log1p = torch.log1p(y_true.float())
+        
+        # 2. Clamp and transform the prediction (just like in evaluation)
+        mu_clamped = torch.clamp(mu, min=-10.0, max=12.0)
+        y_pred_log1p = torch.log1p(torch.exp(mu_clamped))
+        
+        # 3. Calculate standard Mean Squared Error
+        return F.mse_loss(y_pred_log1p, y_true_log1p)

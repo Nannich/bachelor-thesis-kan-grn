@@ -5,18 +5,17 @@ from efficient_kan import KAN as EffKAN
 
 # Hyperparamters
 # Efficient-KAN
-EFFKAN_HIDDEN_LAYERS = [4]
-EFFKAN_GRID_SIZE = 5
+EFFKAN_HIDDEN_LAYERS = [7]
+EFFKAN_GRID_SIZE = 7
 EFFKAN_SPLINE_ORDER = 3
 
 # PyKAN
 PYKAN_HIDDEN_LAYERS = [1]
-PYKAN_GRID_SIZE = 5
+PYKAN_GRID_SIZE = 3
 PYKAN_SPLINE_ORDER = 3
 
 # MLP
-# MLP_HIDDEN_LAYERS = [320, 320, 320]
-MLP_HIDDEN_LAYERS = [64, 64, 64]
+MLP_HIDDEN_LAYERS = [489, 489, 489]
 
 
 class ZINB_EFFKAN(nn.Module):
@@ -64,7 +63,8 @@ class ZINB_PYKAN(nn.Module):
             grid=PYKAN_GRID_SIZE,
             k=PYKAN_SPLINE_ORDER,
             grid_range=[-1, 2],
-            device="cpu"  
+            device="cpu",
+            auto_save=False
         )
 
     def forward(self, x, update_grid=False):

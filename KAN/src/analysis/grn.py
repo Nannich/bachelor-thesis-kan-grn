@@ -1,20 +1,17 @@
 import numpy as np
 import os
-import networkx as nx
 from sklearn.cluster import KMeans
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score, average_precision_score
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from kan import KAN as PyKAN
-from utils import *
-from de import *
-from model import build_model
 import pandas as pd
-from plot import *
+from sklearn.metrics import roc_auc_score, average_precision_score
+from kan import KAN as PyKAN
+
+from src.utils import *
+from src.analysis.de import *
+from src.model import build_model
+from src.plotting.plot import *
 
 N_BINS = 512
 
@@ -190,6 +187,42 @@ def get_grn(predictions):
     
     return adj_matrix
 
+def save_beeline_ranked_edges(adj_matrix, gene_names, data_dir, dataset_name):
+    """
+    Converts your adjacency matrix into BEELINE's expected rankedEdges.csv format.
+    BEELINE ranks edges purely by the absolute magnitude of the weight.
+    """
+    edges = []
+    n_genes = len(gene_names)
+    
+    for i in range(n_genes):
+        for j in range(n_genes):
+            if i != j:  # Exclude self-loops
+                weight = adj_matrix[i, j]
+                abs_weight = abs(weight)
+                if abs_weight > 0:
+                    edges.append({
+                        'Gene1': gene_names[i], # Source / Regulator
+                        'Gene2': gene_names[j], # Target
+                        'EdgeWeight': abs_weight, # BEELINE ranks by magnitude
+                        'Sign': 1 if weight > 0 else -1 # Keeps track of activator/repressor
+                    })
+                    
+    df = pd.DataFrame(edges)
+    if not df.empty:
+        df = df.sort_values(by='EdgeWeight', ascending=False)
+        
+    # Extract dataset group (e.g. 'GSD' or 'dyn-BF-100') from data_dir
+    dataset_group = os.path.basename(os.path.normpath(data_dir))
+    
+    # Save exactly where BEELINE expects it
+    out_dir = f"external/Beeline/outputs/{dataset_group}/{dataset_name}/myKAN"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "rankedEdges.csv")
+    
+    df.to_csv(out_path, sep='\t', index=False)
+    print(f"Saved ranked edges for BEELINE to: {out_path}")
+
 def run_grn(args, adata, pseudotime, weights):
     data_dir = args.data_dir
     model_dir = args.model_dir
@@ -203,7 +236,7 @@ def run_grn(args, adata, pseudotime, weights):
 
     null_name = f"null_{dataset}_all.pth"
     null_path = os.path.join(model_dir, null_name)
-    null_checkpoint = torch.load(null_path, weights_only=False)
+    #null_checkpoint = torch.load(null_path, weights_only=False)
     
     # Rebuild original model to extract DE trajectories
     model_type = checkpoint["model"]
@@ -214,9 +247,11 @@ def run_grn(args, adata, pseudotime, weights):
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
 
-    is_de = information_criteria_test(checkpoint, null_checkpoint, threshold=-99999)
-
     predictions = predict_lineage_trajectories(pseudotime, weights, model, None, pt_min, pt_max)
+
+    n_genes = output_dim // 3
+    is_de = np.ones(n_genes, dtype=bool)
+    # is_de = information_criteria_test(checkpoint, null_checkpoint, threshold=-99999)
 
     predictions_de = filter_predictions(predictions, is_de)
 
@@ -227,9 +262,11 @@ def run_grn(args, adata, pseudotime, weights):
     adj_matrix = get_grn(predictions_smooth)
 
     adj_df = pd.DataFrame(adj_matrix, index=de_gene_names, columns=de_gene_names)
-    output_filename = "grn_small_matrix.csv"
+    output_filename = f"results/{model_name}_grn.csv"
     adj_df.to_csv(output_filename)
 
-    evaluate_grn(adj_matrix, de_gene_names, dataset, data_dir=args.data_dir, edge_threshold=0.01)
+    #evaluate_grn(adj_matrix, de_gene_names, dataset, data_dir=args.data_dir, edge_threshold=0.01)
     
-    plot_grn(adj_matrix, de_gene_names, edge_threshold=0.01)
+    plot_grn(adj_matrix, de_gene_names, edge_threshold=0.3)
+
+    save_beeline_ranked_edges(adj_matrix, de_gene_names, args.data_dir, args.dataset)

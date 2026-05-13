@@ -1,12 +1,13 @@
 import torch
 import os
 import sympy
-from kan.utils import ex_round
+from kan.utils import ex_round, SYMBOLIC_LIB
 import numpy as np
 import matplotlib.pyplot as plt
-from model import build_model
-from utils import *
-from kan.utils import SYMBOLIC_LIB
+
+from src.model import build_model
+from src.utils import *
+
 
 def torch_sigmoid(x):
     return 1 / (1 + torch.exp(-x))
@@ -39,11 +40,11 @@ def symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max):
         model(X_sample)
 
     # Pruning
-    # model.kan.remove_node(2, 1, mode='down')
-    # model.kan.remove_node(2, 2, mode='down')
+    model.kan.remove_node(2, 1, mode='down')
+    model.kan.remove_node(2, 2, mode='down')
 
-    # model.kan = model.kan.prune()
-    # model.kan.prune_edge(threshold=0.05)
+    model.kan = model.kan.prune()
+    model.kan.prune_edge(threshold=0.05)
 
     # Plotting the KAN
     n_lineages = weights.shape[1]
