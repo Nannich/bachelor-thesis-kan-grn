@@ -3,6 +3,8 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
+from src.analysis.cluster import *
+from src.plotting.plot import *
 from src.utils import *
 from src.formulas import *
 from src.dataloaders import *
@@ -27,7 +29,6 @@ def plot_parameters(ax, model, checkpoint, gene_to_plot):
     hidden_layers = checkpoint["hidden_layers"]
     lr = checkpoint["lr"]
     wd = checkpoint["wd"]
-    gene = checkpoint["gene"]
     
     # Metrics
     mse = checkpoint["mse"]          # Shape: (n_genes, n_lineages)
@@ -69,28 +70,17 @@ def plot_parameters(ax, model, checkpoint, gene_to_plot):
 
     return text_box
 
-def plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors):
+def plot_curves(ax, predictions_raw, colors):
     """
-    Plots the raw and smoothed prediction curves of the model.
+    Plots the raw and smoothed prediction curves of the model. 
     """
-
-    model.eval()
-
-    gene = checkpoint["gene"]
-    pt_min = checkpoint["pt_min"]
-    pt_max = checkpoint["pt_max"]
-
-    is_single_gene = gene is not None
-    
-    n_lineages = weights.shape[1]
-
-    predictions_raw = predict_lineage_trajectories(pseudotime, weights, model, gene_to_plot, pt_min, pt_max)
+    n_lineages = len(predictions_raw)
 
     for l in range(n_lineages):
         x_raw, _, y_raw = predictions_raw[l]
         x_smooth, y_smooth = smoothen_lineage_trajectory(x_raw, y_raw)
 
-        #ax.plot(x_raw, y_raw, linewidth=1, color=colors[l], label=f"Raw Predictions - Lineage {l+1}", alpha=0.4)
+        ax.plot(x_raw, y_raw, linewidth=1, color=colors[l], label=f"Raw Predictions - Lineage {l+1}", alpha=0.4)
         ax.plot(x_smooth, y_smooth, linewidth=3, color=colors[l], label=f"Smoothed - Lineage {l+1}", alpha=0.6)
         
 
@@ -113,7 +103,6 @@ def plot_custom(ax, pseudotime, checkpoint, colors):
         
         # Transform back to log1p space and flatten to 1D
         y_formula = np.log1p(np.exp(y_formula_raw)).flatten()
-
         
         ax.plot(x_clean, y_formula, linewidth=4, color=colors[l], linestyle="--", label=f"Lineage {l+1} (Symbolic)", zorder=4)
 
@@ -134,30 +123,25 @@ def plot_scatter_data(ax, adata, pseudotime, weights, gene_to_plot, colors):
         ax.scatter(pt_active, log_count_active, s=16, color=colors[l], alpha=0.4)
 
 
-def plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path):
+def plot_everything(adata, pseudotime, weights, predictions_raw, model, checkpoint, gene_to_plot, fig_path):
     """
     Plots the scatter data and curves.
     """
-    model.eval()
-
     n_lineages = weights.shape[1]    
     colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
-    # colors = ['#084594', '#d95f02']
-    # colors = ['#000000', '#000000']
-
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    text_box = plot_parameters(ax, model, checkpoint, gene_to_plot,)
+    text_box = plot_parameters(ax, model, checkpoint, gene_to_plot)
     
     plot_scatter_data(ax, adata, pseudotime, weights, gene_to_plot, colors)
-    
-    plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors)
-    plot_custom(ax, pseudotime, checkpoint, colors)
+    plot_curves(ax, predictions_raw, colors)
+    #plot_custom(ax, pseudotime, checkpoint, colors)
     
     ax.set_title(f"Gene: {gene_to_plot}")
 
-    gene_name = KNOWN_GENES.get(gene_to_plot, f"Gene {gene_to_plot}")
+    #gene_name = KNOWN_GENES.get(gene_to_plot, f"Gene {gene_to_plot}")
+    gene_name = f"{adata.var_names[gene_to_plot]} ({gene_to_plot})"
     ax.set_title(f"{gene_name} Expression Trajectory", fontsize=16, fontweight='bold')
 
     ax.set_xlabel("Pseudotime")
@@ -185,11 +169,24 @@ def run_visualization(args, adata, pseudotime, weights):
     model_type = checkpoint["model"]
     input_dim = checkpoint["input_dim"]
     output_dim = checkpoint["output_dim"]
+    pt_min = checkpoint["pt_min"]
+    pt_max = checkpoint["pt_max"]
 
     fig_path = os.path.join(fig_dir, "visualize", dataset, f"{model_type}_{dataset}_gene{gene_to_plot}.png")
     os.makedirs(os.path.dirname(fig_path), exist_ok=True)
+    
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])
+    model.eval()
 
-    plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path)
+    predictions_raw = predict_lineage_trajectories(
+        pseudotime, weights, model, gene_to_plot, pt_min, pt_max
+    )
 
+    trajectory_cube = build_smoothed_cube(predictions_raw)
+
+    plot_everything(adata, pseudotime, weights, predictions_raw, model, checkpoint, gene_to_plot, fig_path)
+    #labels = cluster_trajectories(trajectory_cube, n_clusters=20)
+    #plot_clusters(trajectory_cube, labels)
+
+    plt.show()

@@ -146,8 +146,6 @@ def build_smoothed_cube(filtered_predictions, n_bins=20):
     for l, (pt, _, y_de) in filtered_predictions.items():
         # Smoothening creates a fixed 'n_bins' length
         _, y_smooth = smoothen_lineage_trajectory(pt, y_de, n_bins=n_bins)
-        
-        # y_smooth is (n_bins, n_de_genes), so we transpose to (n_de_genes, n_bins)
         trajectory_matrix[:, l, :] = y_smooth.T
 
     return trajectory_matrix
@@ -157,9 +155,57 @@ def get_raw_counts(adata):
     # Use .raw if it exists, otherwise fall back to .X
     data_source = adata.raw.X if adata.raw is not None else adata.X
     
-    # Check if it has the 'toarray' method (indicates it's a Scipy sparse matrix)
     if hasattr(data_source, "toarray"):
         return data_source.toarray().astype(np.float32)
     
-    # Otherwise, assume it's already a numpy array or similar
+    # Assume it's already a numpy array or similar
     return np.array(data_source, dtype=np.float32)
+
+
+def get_lagged_expression(adata, pseudotime, weights, target_idx, lag=5):
+    """
+    Creates time-lagged X and Y matrices by sorting cells by pseudotime within each lineage.
+    X contains the predictor genes at time t. 
+    Y contains the target gene at time t + lag.
+    """
+    raw_counts = get_raw_counts(adata)
+    n_lineages = weights.shape[1]
+    lineage_assignment = get_lineage_assignment(weights)
+
+    X_lagged = []
+    Y_lagged = []
+
+    for l in range(n_lineages):
+        # Mask cells belonging to this specific lineage
+        mask = lineage_assignment[:, l]
+        if not np.any(mask): 
+            continue
+        
+        # Get counts and pseudotime for these cells
+        lin_counts = raw_counts[mask]
+        lin_pt = pseudotime[mask, l]
+        
+        # Sort chronologically by pseudotime
+        sort_idx = np.argsort(lin_pt)
+        lin_counts_sorted = lin_counts[sort_idx]
+        
+        # Apply the time lag
+        if len(lin_counts_sorted) <= lag: 
+            continue
+        
+        # X is time t (all cells except the last 'lag' cells)
+        X_t = lin_counts_sorted[:-lag]
+        
+        # Drop the target gene from the inputs so we only predict using the other genes
+        X_t = np.delete(X_t, target_idx, axis=1)
+        
+        # Y is time t+lag (target gene only, skipping the first 'lag' cells)
+        Y_t_plus_lag = lin_counts_sorted[lag:, [target_idx]]
+        
+        X_lagged.append(X_t)
+        Y_lagged.append(Y_t_plus_lag)
+
+    X_final = np.vstack(X_lagged)
+    Y_final = np.vstack(Y_lagged)
+
+    return X_final, Y_final

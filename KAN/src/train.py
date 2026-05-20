@@ -22,6 +22,8 @@ TRAIN_CONFIG = {
     "null":   {"lr": 0.001,  "wd": 0.0}
 }
 
+
+
 def train_loop(dataloader, model, loss_fn, optimizer, device, epoch, is_kan):
     model.train()
     total_loss = 0.0

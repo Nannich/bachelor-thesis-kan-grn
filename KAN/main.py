@@ -35,18 +35,18 @@ def main():
 
     parser_vis = subparsers.add_parser("visualize")
     parser_vis.add_argument("name", type=str)
-    parser_vis.add_argument("gene", type=int)
+    parser_vis.add_argument("gene", type=int, nargs="?", default=None)
 
     parser_sym = subparsers.add_parser("symbolic")
-    parser_sym.add_argument("name", type=str)
-    parser_sym.add_argument("gene", type=int)
+    parser_sym.add_argument("--name", type=str)
+    parser_sym.add_argument("--gene")
     
     parser_de = subparsers.add_parser("de")
     parser_de.add_argument("name", type=str)
     parser_de.add_argument("--lineage", type=int, default=0)
 
     parser_grn = subparsers.add_parser("grn")
-    parser_grn.add_argument("name", type=str)
+    parser_grn.add_argument("--name", type=str)
 
     parser_process = subparsers.add_parser("process")
 
