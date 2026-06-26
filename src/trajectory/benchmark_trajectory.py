@@ -18,10 +18,10 @@ from src.trajectory.zinb_loss import ZINBLoss
 
 
 CONFIGS = [
-    {"model": "mlp", "loss": "mse", "hidden_layers": [4, 4], "subdir": "mlp_small", "name": "MSE_MLP_SMALL"},
+    {"model": "mlp", "loss": "mse", "hidden_layers": [10], "subdir": "mlp_small", "name": "MSE_MLP_SMALL"},
     {"model": "mlp", "loss": "mse", "hidden_layers": [16, 16], "subdir": "mlp_large", "name": "MSE_MLP_LARGE"},
     {"model": "kan", "loss": "mse", "hidden_layers": [1], "subdir": "", "name": "MSE_KAN"},
-    {"model": "mlp", "loss": "zinb", "hidden_layers": [4, 4], "subdir": "mlp_small", "name": "ZINB_MLP_SMALL"},
+    {"model": "mlp", "loss": "zinb", "hidden_layers": [10], "subdir": "mlp_small", "name": "ZINB_MLP_SMALL"},
     {"model": "mlp", "loss": "zinb", "hidden_layers": [16, 16], "subdir": "mlp_large", "name": "ZINB_MLP_LARGE"},
     {"model": "kan", "loss": "zinb", "hidden_layers": [1], "subdir": "", "name": "ZINB_KAN"},
 ]

@@ -12,15 +12,19 @@ from src.trajectory.train_trajectory import run_trajectory
 
 # Architectures to benchmark
 ARCHITECTURES = [
-    {"name": "log_log", "input_mode": "log", "target_mode": "log", "loss": "mse", "lag": 0.0},
-    {"name": "smo_log", "input_mode": "smooth", "target_mode": "log", "loss": "mse", "lag": 0.0},
-    {"name": "log_smo", "input_mode": "log", "target_mode": "smooth", "loss": "mse", "lag": 0.0},
-    {"name": "smo_smo", "input_mode": "smooth", "target_mode": "smooth", "loss": "mse", "lag": 0.0},
+    {"name": "log_log", "input_mode": "log", "target_mode": "log", "loss": "mse", "lag": 0.0, "traj_loss": "mse"},
+    {"name": "smo_log", "input_mode": "smooth", "target_mode": "log", "loss": "mse", "lag": 0.0, "traj_loss": "mse"},
+    {"name": "log_smo", "input_mode": "log", "target_mode": "smooth", "loss": "mse", "lag": 0.0, "traj_loss": "mse"},
+    {"name": "smo_smo", "input_mode": "smooth", "target_mode": "smooth", "loss": "mse", "lag": 0.0, "traj_loss": "mse"},
     
-    {"name": "log_log_l", "input_mode": "log", "target_mode": "log", "loss": "mse", "lag": 0.1},
-    {"name": "smo_log_l", "input_mode": "smooth", "target_mode": "log", "loss": "mse", "lag": 0.1},
-    {"name": "log_smo_l", "input_mode": "log", "target_mode": "smooth", "loss": "mse", "lag": 0.1},
-    {"name": "smo_smo_l", "input_mode": "smooth", "target_mode": "smooth", "loss": "mse", "lag": 0.1},
+    {"name": "log_log_l", "input_mode": "log", "target_mode": "log", "loss": "mse", "lag": 0.1, "traj_loss": "mse"},
+    {"name": "smo_log_l", "input_mode": "smooth", "target_mode": "log", "loss": "mse", "lag": 0.1, "traj_loss": "mse"},
+    {"name": "log_smo_l", "input_mode": "log", "target_mode": "smooth", "loss": "mse", "lag": 0.1, "traj_loss": "mse"},
+    {"name": "smo_smo_l", "input_mode": "smooth", "target_mode": "smooth", "loss": "mse", "lag": 0.1, "traj_loss": "mse"},
+
+    {"name": "smo_log_lz", "input_mode": "smooth", "target_mode": "log", "loss": "mse", "lag": 0.1, "traj_loss": "zinb"},
+    {"name": "log_smo_lz", "input_mode": "log", "target_mode": "smooth", "loss": "mse", "lag": 0.1, "traj_loss": "zinb"},
+    {"name": "smo_smo_lz", "input_mode": "smooth", "target_mode": "smooth", "loss": "mse", "lag": 0.1, "traj_loss": "zinb"},
 ]
 
 def calculate_network_metrics(df_edges, gt_csv_path, gene_names):
@@ -107,25 +111,26 @@ def run_benchmark_grn(args):
         
         trajectory_dir = MODELS_DIR / dataset_name / "trajectory"
 
-        # Pre-train smooth MSE trajectory curves once per individual dataset
-        for gene_idx in range(len(gene_names)):
-            gene_name = gene_names[gene_idx]
-            trajectory_checkpoint_path = trajectory_dir / f"kan_{gene_name}_mse.pth"
-            
-            if trajectory_checkpoint_path.exists():
-                print(f"  Trajectory model for gene '{gene_name}' already exists. Skipping training.")
-                continue
+        # Pre-train smooth trajectory curves once per individual dataset
+        for loss_type in ["mse", "zinb"]:
+            for gene_idx in range(len(gene_names)):
+                gene_name = gene_names[gene_idx]
+                trajectory_checkpoint_path = trajectory_dir / f"kan_{gene_name}_{loss_type}.pth"
                 
-            traj_args = Namespace(
-                model="kan",
-                loss="mse",
-                gene=gene_idx,
-                hidden_layers=None,
-                epochs=500,
-                model_dir=trajectory_dir
-            )
-            
-            run_trajectory(traj_args, dataset_obj)
+                if trajectory_checkpoint_path.exists():
+                    print(f"  Trajectory model for gene '{gene_name}' ({loss_type}) already exists. Skipping training.")
+                    continue
+                    
+                traj_args = Namespace(
+                    model="kan",
+                    loss=loss_type,
+                    gene=gene_idx,
+                    hidden_layers=None,
+                    epochs=500,
+                    model_dir=trajectory_dir
+                )
+                
+                run_trajectory(traj_args, dataset_obj)
 
         # Run each architecture
         for config in ARCHITECTURES:
@@ -154,7 +159,8 @@ def run_benchmark_grn(args):
                         device=device,
                         epochs=200,
                         lr=0.01,
-                        lamb_l1=0.02
+                        lamb_l1=0.02,
+                        traj_loss_mode=config["traj_loss"]
                     )
                     
                     if not df_edges.empty:

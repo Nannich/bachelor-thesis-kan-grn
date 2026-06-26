@@ -35,7 +35,7 @@ def extract_kan_signatures(model, X_tensor, loss_mode="mse"):
 
 def infer_grn_network(dataset, input_mode, target_mode, loss_mode, 
                       dt_val, ground_truth_map, trajectory_dir, checkpoint_save_path, device,
-                      epochs=200, lr=0.01, lamb_l1=0.02):
+                      epochs=200, lr=0.01, lamb_l1=0.02, traj_loss_mode="mse"):
     """
     Core loop for GRN inference. Handles data loading, centralized feature 
     masking via prior biological knowledge, and model checkpointing.
@@ -45,7 +45,7 @@ def infer_grn_network(dataset, input_mode, target_mode, loss_mode,
     
     # Resolve matrix sources
     if input_mode == "smooth" or target_mode == "smooth":
-        smooth_expression = get_smoothed_expression(dataset, trajectory_dir, loss_mode)
+        smooth_expression = get_smoothed_expression(dataset, trajectory_dir, traj_loss_mode)
     
     log_counts_in = smooth_expression if input_mode == "smooth" else np.log1p(dataset.raw_counts)
     log_counts_tgt = smooth_expression if target_mode == "smooth" else np.log1p(dataset.raw_counts)
