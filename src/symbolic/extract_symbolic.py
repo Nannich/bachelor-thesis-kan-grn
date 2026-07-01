@@ -85,8 +85,6 @@ def extract_symbolic_grn(checkpoint, checkpoint_path, dataset_name, tmp_dir, cus
         kan_model.remove_node(final_layer_idx, 1, mode='down')
         kan_model.remove_node(final_layer_idx, 2, mode='down')
     
-    # FIXED: Combined and corrected the duplicate pruning blocks.
-    # prune_edge executes in-place and should not be re-assigned to the model variable.
     if prune:
         print("  Pruning model graph and low-weight edges...")
         kan_model = kan_model.prune()
